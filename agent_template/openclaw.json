@@ -1,0 +1,180 @@
+// ~/.openclaw/openclaw.json
+// PWD Vision Works — OpenClaw Master Configuration
+// Version: 2026.4.20
+// Note: JSON5 format — comments allowed
+
+{
+  // ============================================================
+  // IDENTITY
+  // ============================================================
+  identity: {
+    name: "แอดมินไซบี้",
+    display_name: "Cybi — PWD Vision Works AI",
+    docs_path: "/opt/pwd-ai/docs",
+    soul_file: "/opt/pwd-ai/docs/SOUL.md",
+    identity_file: "/opt/pwd-ai/docs/IDENTITY.md",
+    context_file: "/opt/pwd-ai/docs/CONTEXT.md",
+    guardrails_file: "/opt/pwd-ai/docs/GUARDRAILS.md",
+  },
+
+  // ============================================================
+  // MODEL DEFAULTS
+  // ============================================================
+  models: {
+    default: "qwen3.5:4b",
+    fallback: "llama3.2:3b",
+    ollama_host: "http://127.0.0.1:11434",
+    request_timeout: 120,        // seconds
+    num_parallel: 1,             // Jetson Xavier — ไม่ run parallel
+    keep_alive: "5m",
+  },
+
+  // ============================================================
+  // CHANNELS
+  // ============================================================
+  channels: {
+    telegram: {
+      enabled: true,
+      bot_token: "${TG_BOT_TOKEN}",
+      polling: true,
+      // Ken's Telegram user ID — ห้ามตอบคนอื่น
+      allowFrom: ["${TG_OWNER_USER_ID}"],
+      // Report channel (can be group or personal)
+      report_chat_id: "${TG_REPORT_CHAT_ID}",
+      parse_mode: "HTML",
+      // Commands available via Telegram
+      commands: {
+        "/seo": { agent: "seo-auditor", description: "รัน SEO report ทันที" },
+        "/sync": { agent: "sync-verifier", description: "ตรวจสอบ D1↔Odoo sync" },
+        "/blog [topic]": { agent: "blog-writer", description: "สร้าง blog outline" },
+        "/product [sku]": { agent: "content-writer", description: "สร้างเนื้อหาสินค้า" },
+        "/status": { builtin: "health", description: "ตรวจสอบสถานะระบบ" },
+        "/help": { builtin: "help", description: "แสดงคำสั่งทั้งหมด" },
+      }
+    },
+    tailscale: {
+      enabled: true,
+      serve_url: "https://ubuntu.tailce8ebd.ts.net",
+    },
+    http: {
+      enabled: true,
+      host: "127.0.0.1",
+      port: 18789,
+      // Webhook endpoints
+      webhooks: {
+        "/api/content/generate": { agent: "content-writer" },
+        "/api/blog/generate": { agent: "blog-writer" },
+        "/api/sync/verify": { agent: "sync-verifier" },
+        "/api/seo/audit": { agent: "seo-auditor" },
+      }
+    }
+  },
+
+  // ============================================================
+  // AGENTS
+  // ============================================================
+  agents: {
+    "seo-auditor": {
+      model: "qwen3.5:4b",
+      temperature: 0.2,
+      max_tokens: 2048,
+      system_prompt: "@file:/opt/pwd-ai/templates/seo-auditor-system.prompt",
+      skills: ["gsc-seo", "telegram-report"],
+      output_format: "telegram_html",
+      cron: "0 7 * * *",        // ทุกวัน 07:00
+    },
+    "content-writer": {
+      model: "qwen3.5:4b",
+      temperature: 0.4,
+      max_tokens: 4096,
+      system_prompt: "@file:/opt/pwd-ai/templates/product-content-system.prompt",
+      skills: ["odoo-api"],
+      output_format: "json",
+      cron: null,                // manual + webhook only
+    },
+    "blog-writer": {
+      model: "qwen3.5:4b",
+      temperature: 0.6,
+      max_tokens: 6000,
+      system_prompt: "@file:/opt/pwd-ai/templates/blog-writer-system.prompt",
+      skills: [],
+      output_format: "markdown",
+      cron: null,
+    },
+    "sync-verifier": {
+      model: "llama3.2:3b",
+      temperature: 0.1,
+      max_tokens: 2048,
+      system_prompt: "@file:/opt/pwd-ai/templates/sync-verifier-system.prompt",
+      skills: ["cloudflare-d1", "odoo-api", "telegram-report"],
+      output_format: "json",
+      cron: "0 6 * * *",        // ทุกวัน 06:00
+    }
+  },
+
+  // ============================================================
+  // SKILLS
+  // ============================================================
+  skills: {
+    "gsc-seo": {
+      type: "http",
+      base_url: "https://searchconsole.googleapis.com/webmasters/v3",
+      auth: {
+        type: "service_account",
+        credentials_file: "/opt/pwd-ai/.credentials/gsc-service-account.json",
+        scopes: ["https://www.googleapis.com/auth/webmasters.readonly"]
+      }
+    },
+    "odoo-api": {
+      type: "jsonrpc",
+      base_url: "${ODOO_URL}",
+      auth: {
+        type: "session",
+        db: "${ODOO_DB}",
+        login: "${ODOO_USER}",
+        password: "${ODOO_PASS}"
+      }
+    },
+    "cloudflare-d1": {
+      type: "http",
+      base_url: "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/d1/database/${CF_D1_DATABASE}",
+      auth: {
+        type: "bearer",
+        token: "${CF_API_TOKEN}"
+      }
+    },
+    "telegram-report": {
+      type: "http",
+      base_url: "https://api.telegram.org/bot${TG_BOT_TOKEN}",
+      defaults: {
+        parse_mode: "HTML",
+        chat_id: "${TG_REPORT_CHAT_ID}"
+      }
+    }
+  },
+
+  // ============================================================
+  // STORAGE
+  // ============================================================
+  storage: {
+    workspace: "/mnt/pwd-data/openclaw/workspace",
+    reports: "/mnt/pwd-data/reports",
+    cache: "/mnt/pwd-data/openclaw/cache",
+    logs: "/var/log/pwd-ai",
+  },
+
+  // ============================================================
+  // ENVIRONMENT (ใส่ใน /opt/pwd-ai/.env แทน hardcode)
+  // ============================================================
+  env_file: "/opt/pwd-ai/.env",
+
+  // ============================================================
+  // HEALTH CHECK
+  // ============================================================
+  health: {
+    check_interval: "5m",
+    checks: ["ollama", "postgresql", "redis", "microsd_mount"],
+    alert_telegram: true,
+    alert_chat_id: "${TG_REPORT_CHAT_ID}",
+  }
+}
